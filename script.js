@@ -18,16 +18,14 @@ let isContactsOpen = false;
 let callStartTime = 0;
 
 // IDs returned by setTimeout/setInterval, kept so they can be cancelled.
-let connectTimeoutId = null;
+// (The pretend "other side answers" timer lives in phone-service.js now.)
 let callTimerIntervalId = null;
 let resetStatusTimeoutId = null;
 
 // E.164, the international phone-number standard, allows at most 15 digits.
 const MAX_LENGTH = 15;
 
-// How long the simulated call "rings" before connecting, and how long
-// "Call ended" stays on screen. Both in milliseconds.
-const SIMULATED_CONNECT_DELAY = 2500;
+// How long "Call ended" and "Non Approved Number" stay on screen (milliseconds).
 const CALL_ENDED_DISPLAY_TIME = 2000;
 const NON_APPROVED_DISPLAY_TIME = 5000;
 
@@ -190,6 +188,11 @@ function playSound(fileName) {
     // play() returns a Promise; .catch() logs a problem (such as a missing
     // file) to the Console instead of failing silently.
     currentSound.play().catch(function (error) {
+        // "AbortError" means a newer sound stopped this one before it began.
+        // That's intended (one sound at a time), so it isn't reported.
+        if (error.name === "AbortError") {
+            return;
+        }
         console.error(`Could not play ${fileName}:`, error);
     });
 }
@@ -226,10 +229,13 @@ function clearNumber() {
 }
 
 // A keypad key was pressed (on screen or on the keyboard).
-// During a call it only plays its tone; otherwise it also dials the digit.
+// During a call it plays its tone and sends it down the line (for phone
+// menus); otherwise it dials the digit.
 function handleKeyPress(digit) {
     playKeySound(digit);
-    if (!isInCall()) {
+    if (isInCall()) {
+        PhoneService.sendDigit(digit);
+    } else {
         appendDigit(digit);
     }
 }
@@ -301,7 +307,12 @@ function isApprovedNumber(number) {
     });
 }
 
-// ----- Calls (simulated) -----
+// ----- Calls -----
+// The interface never places or ends calls itself. It ASKS the phone service
+// (phone-service.js) to, and the service REPORTS back through the callbacks
+// wired up at the bottom of this file. Today the service is a simulation;
+// later a SIP.js version with the same functions will replace it.
+
 // Show a temporary status (like "Call ended"), then go back to "idle".
 function returnToIdleAfter(milliseconds) {
     resetStatusTimeoutId = setTimeout(function () {
@@ -310,8 +321,8 @@ function returnToIdleAfter(milliseconds) {
     }, milliseconds);
 }
 
-// No real call is placed yet. When calling is added, startCall() will
-// also ask the phone service to dial phoneNumber.
+// The user pressed Call: check the number, update the screen, then ask the
+// phone service to dial.
 function startCall() {
     clearTimeout(resetStatusTimeoutId); // in case a temporary status is still showing
     isContactsOpen = false;
@@ -324,13 +335,17 @@ function startCall() {
     callStatus = "calling";
     updateDisplay();
     playSound("calling.mp3");
-
-    // Pretend the other side answers after a short delay. Real calling
-    // code will instead call connectCall() when the service says "answered".
-    connectTimeoutId = setTimeout(connectCall, SIMULATED_CONNECT_DELAY);
+    PhoneService.dial(phoneNumber);
 }
 
-function connectCall() {
+// The user pressed End call (or Esc). This only ASKS the service to hang up;
+// the screen resets in showCallEnded(), once the service confirms it.
+function hangUp() {
+    PhoneService.hangUp();
+}
+
+// Callback: the phone service says the other side answered.
+function showCallConnected() {
     callStatus = "connected";
     callStartTime = Date.now();
     // Redraw once a second so the timer counts up.
@@ -338,11 +353,11 @@ function connectCall() {
     updateDisplay();
 }
 
-// Ends the call however it ended: the user pressed End call, or (later)
-// the phone service reports that the other side disconnected. Both paths
-// should call this one function so the page always resets the same way.
-function endCall() {
-    clearTimeout(connectTimeoutId);       // stop a call that hasn't connected yet
+// Callback: the phone service says the call is over, however it ended
+// (reason is "you-hung-up" or "they-hung-up"). This is the one place the
+// screen resets after a call.
+function showCallEnded(reason) {
+    console.log(`Call ended: ${reason}`);
     clearInterval(callTimerIntervalId);   // stop the timer
     callStatus = "ended";
     isMuted = false;
@@ -362,16 +377,15 @@ function rejectNonApprovedNumber() {
 
 function handleCallButtonClick() {
     if (isInCall()) {
-        endCall();
+        hangUp();
     } else {
         startCall();
     }
 }
 
-// Only changes the button for now. With real calling, this will also
-// turn the microphone's audio track off and on.
 function toggleMute() {
     isMuted = !isMuted;
+    PhoneService.setMuted(isMuted);
     updateDisplay();
 }
 
@@ -424,7 +438,7 @@ function handleKeyDown(event) {
         }
     } else if (event.key === "Escape") {
         if (isInCall()) {
-            endCall();
+            hangUp();
         } else if (isContactsOpen) {
             toggleContacts();
         }
@@ -444,6 +458,13 @@ contactsButton.addEventListener("click", toggleContacts);
 callButton.addEventListener("click", handleCallButtonClick);
 muteButton.addEventListener("click", toggleMute);
 document.addEventListener("keydown", handleKeyDown);
+
+// ----- Wiring the phone service to the interface -----
+// Hand the service the functions to call when something happens on the line.
+// onRinging: nothing new to show yet, since the status already says "Calling…".
+// onFailed: not used until failure outcomes (busy, refused) are added.
+PhoneService.onAnswered = showCallConnected;
+PhoneService.onEnded = showCallEnded;
 
 // Set up the page when it loads.
 buildContactsList();
