@@ -17,6 +17,12 @@
 
     /* How tall the raised keys look, and how far they sink when pressed. */
     --key-depth: 4px;
+
+    /* Fitting the phone into short windows: the height of everything on the
+       page except the keypad's four rows of keys (housing, display, buttons,
+       gaps, page padding). Measured, not exact: if you add or resize
+       something above or below the keypad, adjust this to match. */
+    --non-keypad-height: 483px;
 }
 
 /* Make the HTML "hidden" attribute always win. Without this, a rule like
@@ -27,10 +33,13 @@
 
 body {
     margin: 0;
-    min-height: 100vh;
+    /* dvh = "dynamic viewport height": the visible window height, which on
+       phones changes as the address bar slides in and out. */
+    min-height: 100dvh;
+    padding: 16px;
+    /* Include the padding in min-height, so the page isn't 32px too tall. */
+    box-sizing: border-box;
     display: flex;
-    justify-content: center;
-    align-items: center;
     /* The color shows only while the image loads (or if it's missing). */
     background: #4BA9DF url("images/BlueyBackground.png") center / cover no-repeat fixed;
     font-family: system-ui, sans-serif;
@@ -38,9 +47,16 @@ body {
 
 /* ----- Outer housing ----- */
 .phone {
-    width: 300px;
+    /* "auto" margins split the spare space evenly, centering the phone.
+       Unlike align-items: center, they never push it past the top of the
+       window when it doesn't fit; it just starts at the top instead. */
+    margin: auto;
+    /* 300px, or narrower on small screens such as phones. min() uses the
+       smaller value; 100vw is the window width, minus room for the housing
+       border and padding (54px) and the page padding (32px). */
+    width: min(300px, 100vw - 86px);
     padding: 18px;
-    border: 6px solid var(--housing-dark);
+    border: 9px solid var(--housing-dark);
     border-radius: 36px;
     /* Two layers, separated by a comma; the first one listed is drawn on top.
        1. A see-through gradient: lighter at the top, darker at the bottom,
@@ -108,7 +124,7 @@ body {
         inset 0 -2px 0 rgba(255, 255, 255, 0.5);   /* light catching the lower rim */
 }
 
-/* "Calling…" on the left, "0:42" on the right. */
+/* "Callingâ€¦" on the left, "0:42" on the right. */
 .status-row {
     display: flex;
     justify-content: space-between;
@@ -173,8 +189,11 @@ body {
     gap: 12px;
 }
 
+/* Each key's height is whatever's left of the window after everything else,
+   split across the four rows. clamp(smallest, ideal, largest) keeps that
+   between 40px (still easy to press) and 80px (square, as on a big screen). */
 .key {
-    aspect-ratio: 1;
+    height: clamp(40px, (100dvh - var(--non-keypad-height)) / 4, 80px);
     font-size: 1.6rem;
 }
 
@@ -183,13 +202,17 @@ body {
    is stretched over it (inset: 0) so the phone doesn't change size. */
 .keypad-area {
     position: relative;
+    /* The keys' shadows hang below the keypad (key depth + 8px of shadow).
+       This padding makes room for them inside the area, so neither the
+       shadows nor the contacts panel reach the faceplate's border. */
+    padding-bottom: calc(var(--key-depth) + 8px);
 }
 
 .contacts-panel {
     position: absolute;
-    /* top right bottom left. The bottom reaches 12px lower than the keypad
-       box so it also covers the keys' shadows, which hang below it. */
-    inset: 0 0 -12px 0;
+    /* inset: 0 stretches the panel to all four edges of .keypad-area,
+       which includes the shadow room above, so it covers the keys exactly. */
+    inset: 0;
     overflow-y: auto;
     border: 2px solid #9CC7E3;
     border-radius: 14px;
@@ -197,17 +220,55 @@ body {
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
+/* ----- Contacts scrollbar -----
+   Chrome, Edge, and Safari style scrollbars with these ::-webkit-scrollbar
+   "pseudo-elements" (parts of an element you can style, but that aren't in
+   the HTML). The track's top and bottom margin keeps the scrollbar out of
+   the panel's rounded corners, so it no longer covers the border. */
+.contacts-panel::-webkit-scrollbar {
+    width: 10px;
+}
+
+.contacts-panel::-webkit-scrollbar-track {
+    margin: 12px 0;  /* about the size of the corner's 14px rounding */
+    background: transparent;
+}
+
+/* The draggable part. The transparent border plus background-clip leaves a
+   gap around the thumb, so it looks like a slim pill floating in the panel. */
+.contacts-panel::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background: #9CC7E3 padding-box;
+}
+
+.contacts-panel::-webkit-scrollbar-thumb:hover {
+    background-color: var(--housing-dark);
+}
+
+/* Firefox doesn't support ::-webkit-scrollbar, so it gets the simpler
+   standard settings instead. They're wrapped in @supports because Chrome
+   ignores all the styling above whenever these standard properties are set. */
+@supports not selector(::-webkit-scrollbar) {
+    .contacts-panel {
+        scrollbar-width: thin;
+        scrollbar-color: #9CC7E3 transparent;  /* thumb color, track color */
+    }
+}
+
 .contacts-list {
     margin: 0;
-    padding: 6px;
+    padding: 4px;
     list-style: none;
 }
 
+/* One row per contact: picture | name | number. */
 .contact {
     display: flex;
-    justify-content: space-between;
+    align-items: center;  /* line the three parts up vertically */
+    gap: 6px;
     width: 100%;
-    padding: 12px 10px;
+    padding: 6px;
     border: none;
     border-radius: 10px;
     background: transparent;
@@ -221,12 +282,31 @@ body {
     background: var(--faceplate-color);
 }
 
+/* A round photo. object-fit: cover crops the picture to fill the circle
+   instead of squashing it, in case a picture isn't square. */
+.contact-picture {
+    flex-shrink: 0;  /* never squeeze the picture to make room for text */
+    width: 36px;
+    height: 36px;
+    border: 2px solid var(--housing-dark);
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--faceplate-color);  /* shows if a picture fails to load */
+}
+
+/* flex: 1 makes the name take up all the space the picture and number
+   don't, which pushes the number to the right edge. */
 .contact-name {
+    flex: 1;
+    min-width: 0;  /* allow wrapping instead of pushing the number off the edge */
+    font-size: 0.95rem;
     font-weight: 700;
 }
 
 .contact-number {
     color: var(--housing-dark);
+    font-size: 0.8rem;
+    white-space: nowrap;  /* keep "+1 267 374 9855" on one line */
 }
 
 /* ----- Raised plastic buttons -----
@@ -324,9 +404,99 @@ body {
     margin: 10px auto 0;
 }
 
-/* Disabled buttons fade and flatten so they don't look pressable. */
+/* Disabled buttons stay solid (no see-through opacity, so the housing
+   pattern can't show through), but lose most of their color and sink
+   down flat, so they clearly read as "can't press this right now".
+   filter: saturate() fades the color: 1 is normal, 0 is fully grey. */
 button:disabled {
-    opacity: 0.4;
     cursor: default;
-    box-shadow: 0 1px 0 var(--edge);
+    filter: saturate(0.35);
+    transform: translateY(calc(var(--key-depth) - 2px));  /* sit lower, like a key held down */
+    box-shadow:
+        inset 0 2px 0 rgba(255, 255, 255, 0.3),
+        0 2px 0 var(--edge);
+}
+
+/* ----- Short windows -----
+   A media query: these rules apply only while the window is 720px tall or
+   less. They tighten the spacing so more height is left for the keys. */
+@media (max-height: 720px) {
+    :root {
+        --non-keypad-height: 364px;  /* everything below is smaller, so less to subtract */
+    }
+
+    body {
+        padding: 8px 16px;
+    }
+
+    .phone {
+        padding: 10px 14px;
+    }
+
+    .connection-status {
+        margin-bottom: 6px;
+    }
+
+    .faceplate {
+        padding: 10px;
+    }
+
+    .status-row {
+        margin-bottom: 4px;
+    }
+
+    .number-display {
+        min-height: 36px;
+        margin-bottom: 8px;
+        padding: 4px 10px;
+        font-size: 1.4rem;
+    }
+
+    .edit-controls {
+        margin-bottom: 10px;
+    }
+
+    .edit-controls button {
+        padding: 6px;
+    }
+
+    .keypad {
+        gap: 8px;
+    }
+
+    .call-controls {
+        margin-top: 10px;
+    }
+
+    .call-button,
+    .mute-button {
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    .simulated-note {
+        margin-top: 6px;
+    }
+}
+
+/* ----- Narrow screens (small phones) -----
+   Shrink the contact rows a little so the number still fits on the right. */
+@media (max-width: 400px) {
+    .contact {
+        gap: 6px;
+        padding: 6px 4px;
+    }
+
+    .contact-picture {
+        width: 30px;
+        height: 30px;
+    }
+
+    .contact-name {
+        font-size: 0.85rem;
+    }
+
+    .contact-number {
+        font-size: 0.72rem;
+    }
 }

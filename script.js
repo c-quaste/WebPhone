@@ -39,15 +39,31 @@ const STATUS_LABELS = {
     "not-approved": "Non Approved Number",
 };
 
-// Fictional numbers: 555-0100 to 555-0199 are reserved for fiction.
+// The people this phone can call, in the order they appear on screen.
 // Only these numbers can be dialed (see isApprovedNumber). That check runs
 // in the browser, so it is cosmetic: anyone can bypass it. Real enforcement
 // belongs in Asterisk (see Security in CLAUDE.md).
+//   name    - shown on screen (the contact's nickname from contact_list.txt)
+//   number  - digits only; formatForDisplay() adds the +1 and spaces
+//   picture - a file in CONTACT_PICTURE_FOLDER. File names are case-sensitive
+//             on most web servers, so they must match the file exactly.
+const CONTACT_PICTURE_FOLDER = "images/contact_pictures/";
+
 const CONTACTS = [
-    { name: "Mum", number: "2025550101" },
-    { name: "Dad", number: "2025550102" },
-    { name: "Nana", number: "2025550103" },
-    { name: "Grandad", number: "2025550104" },
+    { name: "Aunt Cammy",  number: "2673749855", picture: "aunt_cammy.jpg" },
+    { name: "Aunt Katie",  number: "2676645377", picture: "aunt_katie.jpg" },
+    { name: "Aunt Lexi",   number: "2156226947", picture: "aunt_lexi.jpg" },
+    { name: "Aunt Missy",  number: "6099222256", picture: "aunt_mimi.png" },
+    { name: "Aunt Nicole", number: "2676646068", picture: "aunt_nicole.png" },
+    { name: "Aunt Taylor", number: "2155893242", picture: "aunt_taylor.png" },
+    { name: "Dad",         number: "2676448719", picture: "dad.jpg" },
+    { name: "Dian",        number: "6103495795", picture: "Dian_Bender.jpg" },
+    { name: "Didi",        number: "2155275025", picture: "Didi.jpg" },
+    { name: "Lala",        number: "4847147830", picture: "Lala.png" },
+    { name: "OG Pop Pop",  number: "2155275024", picture: "og_pop_pop.png" },
+    { name: "Pop Pop",     number: "2673775710", picture: "pop_pop.jpg" },
+    { name: "Uncle John",  number: "4849515725", picture: "uncle_john.jpg" },
+    { name: "Uncle Owen",  number: "2156224166", picture: "uncle_owen.jpg" },
 ];
 
 // ----- Page elements -----
@@ -186,9 +202,6 @@ const KEY_SOUND_NAMES = {
 
 // "5" -> key-5.mp3, "*" -> key-star.mp3, "#" -> key-pound.mp3
 function playKeySound(digit) {
-    if (digit === "0") {
-        return; // No recording for 0 yet.
-    }
     const name = KEY_SOUND_NAMES[digit] || digit;
     playSound(`key-${name}.mp3`);
 }
@@ -240,6 +253,13 @@ function selectContact(contact) {
 // name exactly as text, even if it contains characters like < or >.
 function buildContactsList() {
     CONTACTS.forEach(function (contact) {
+        // alt="" marks the picture as decorative: the name is right next to
+        // it, so screen readers don't need to announce it twice.
+        const picture = document.createElement("img");
+        picture.className = "contact-picture";
+        picture.src = CONTACT_PICTURE_FOLDER + contact.picture;
+        picture.alt = "";
+
         const nameText = document.createElement("span");
         nameText.className = "contact-name";
         nameText.textContent = contact.name;
@@ -251,7 +271,7 @@ function buildContactsList() {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "contact";
-        button.append(nameText, numberText);
+        button.append(picture, nameText, numberText);  // left to right
         button.addEventListener("click", function () {
             selectContact(contact);
         });
