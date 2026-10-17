@@ -8,6 +8,7 @@ let phoneNumber = "";
 //   "calling"   - dialing, waiting for the other side to answer
 //   "connected" - the call is in progress
 //   "ended"     - the call just ended (shown briefly, then back to "idle")
+//   "not-approved" - the number isn't a contact (shown briefly, then back to "idle")
 let callStatus = "idle";
 
 let isMuted = false;
@@ -28,17 +29,20 @@ const MAX_LENGTH = 15;
 // "Call ended" stays on screen. Both in milliseconds.
 const SIMULATED_CONNECT_DELAY = 2500;
 const CALL_ENDED_DISPLAY_TIME = 2000;
+const NON_APPROVED_DISPLAY_TIME = 5000;
 
 const STATUS_LABELS = {
     idle: "Ready",
     calling: "Calling…",
     connected: "Connected",
     ended: "Call ended",
+    "not-approved": "Non Approved Number",
 };
 
 // Fictional numbers: 555-0100 to 555-0199 are reserved for fiction.
-// Note: this list only makes dialing easier. It does not restrict which
-// numbers can be called (see Security in CLAUDE.md).
+// Only these numbers can be dialed (see isApprovedNumber). That check runs
+// in the browser, so it is cosmetic: anyone can bypass it. Real enforcement
+// belongs in Asterisk (see Security in CLAUDE.md).
 const CONTACTS = [
     { name: "Mum", number: "2025550101" },
     { name: "Dad", number: "2025550102" },
@@ -139,6 +143,7 @@ function updateDisplay() {
 
     // Status line and timer.
     callStatusText.textContent = STATUS_LABELS[callStatus];
+    callStatusText.classList.toggle("is-warning", callStatus === "not-approved");
     callTimer.hidden = !isConnected;
     if (isConnected) {
         callTimer.textContent = formatDuration(Date.now() - callStartTime);
@@ -257,13 +262,46 @@ function buildContactsList() {
     });
 }
 
+// ----- Approved numbers -----
+// "12025550101" -> "2025550101". Drops a typed +1 country code so a number
+// matches its contact whether or not the 1 was dialed.
+function withoutCountryCode(digits) {
+    if (digits.length === 11 && digits.startsWith("1")) {
+        return digits.slice(1);
+    }
+    return digits;
+}
+
+// True if the number belongs to someone in CONTACTS.
+// .some() returns true as soon as one contact matches.
+function isApprovedNumber(number) {
+    const dialed = withoutCountryCode(number);
+    return CONTACTS.some(function (contact) {
+        return withoutCountryCode(contact.number) === dialed;
+    });
+}
+
 // ----- Calls (simulated) -----
+// Show a temporary status (like "Call ended"), then go back to "idle".
+function returnToIdleAfter(milliseconds) {
+    resetStatusTimeoutId = setTimeout(function () {
+        callStatus = "idle";
+        updateDisplay();
+    }, milliseconds);
+}
+
 // No real call is placed yet. When calling is added, startCall() will
 // also ask the phone service to dial phoneNumber.
 function startCall() {
-    clearTimeout(resetStatusTimeoutId); // in case "Call ended" is still showing
-    callStatus = "calling";
+    clearTimeout(resetStatusTimeoutId); // in case a temporary status is still showing
     isContactsOpen = false;
+
+    if (!isApprovedNumber(phoneNumber)) {
+        rejectNonApprovedNumber();
+        return;
+    }
+
+    callStatus = "calling";
     updateDisplay();
     playSound("calling.mp3");
 
@@ -290,11 +328,16 @@ function endCall() {
     isMuted = false;
     updateDisplay();
     playSound("call-ended.mp3");
+    returnToIdleAfter(CALL_ENDED_DISPLAY_TIME);
+}
 
-    resetStatusTimeoutId = setTimeout(function () {
-        callStatus = "idle";
-        updateDisplay();
-    }, CALL_ENDED_DISPLAY_TIME);
+// The number isn't a contact, so no call is started. The number stays on
+// the display so the user can see what they dialed and fix it.
+function rejectNonApprovedNumber() {
+    callStatus = "not-approved";
+    updateDisplay();
+    playSound("non-approved-number.mp3");
+    returnToIdleAfter(NON_APPROVED_DISPLAY_TIME);
 }
 
 function handleCallButtonClick() {
