@@ -1,14 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="stylesheet" href="style.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phone</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    
+    <main class="phone">
+        <!-- The number the user has typed so far. JavaScript fills this in. -->
+        <div id="number-display" class="number-display" aria-live="polite"></div>
 
+        <div class="edit-controls">
+            <button type="button" id="backspace-button">⌫ Backspace</button>
+            <button type="button" id="clear-button">Clear</button>
+        </div>
+
+        <!-- Each key stores its value in a data-digit attribute so the
+             script can read it without depending on the button's label. -->
+        <div class="keypad">
+            <button type="button" class="key" data-digit="1">1</button>
+            <button type="button" class="key" data-digit="2">2</button>
+            <button type="button" class="key" data-digit="3">3</button>
+            <button type="button" class="key" data-digit="4">4</button>
+            <button type="button" class="key" data-digit="5">5</button>
+            <button type="button" class="key" data-digit="6">6</button>
+            <button type="button" class="key" data-digit="7">7</button>
+            <button type="button" class="key" data-digit="8">8</button>
+            <button type="button" class="key" data-digit="9">9</button>
+            <button type="button" class="key" data-digit="*">*</button>
+            <button type="button" class="key" data-digit="0">0</button>
+            <button type="button" class="key" data-digit="#">#</button>
+        </div>
+
+        <button type="button" id="call-button" class="call-button">Call</button>
+        <p class="simulated-note">Simulated — no real call is placed.</p>
+    </main>
 
     <script src="script.js"></script>
 </body>

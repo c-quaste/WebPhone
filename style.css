@@ -1,0 +1,132 @@
+/* Theme colors, defined once and reused below with var(--name). */
+:root {
+    --phone-color: #4BA9DF;
+    --button-color: #E98B32;
+    --button-hover-color: #D97B22;
+    --button-pressed-color: #C46A15;
+    --button-text-color: #34558B;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* The color shows only while the image loads (or if it's missing). */
+    background: #4BA9DF url("images/BlueyBackground.png") center / cover no-repeat fixed;
+    font-family: system-ui, sans-serif;
+}
+
+.phone {
+    width: 280px;
+    padding: 24px;
+    border-radius: 24px;
+    background: var(--phone-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.number-display {
+    min-height: 48px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #f3f5f8;
+    font-size: 1.6rem;
+    text-align: right;
+    letter-spacing: 1px;
+    overflow-wrap: anywhere;
+}
+
+/* Shown while the display is empty. */
+.number-display:empty::before {
+    content: "Enter a number";
+    color: #9aa3ad;
+    font-size: 1.1rem;
+    letter-spacing: normal;
+}
+
+.edit-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.edit-controls button {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+/* Three equal columns; the twelve keys wrap into four rows automatically. */
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.key {
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 50%;
+    font-size: 1.6rem;
+}
+
+/* Shared look for the keypad and the Backspace/Clear buttons. */
+.key,
+.edit-controls button {
+    background: var(--button-color);
+    color: var(--button-text-color);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.key:hover:not(:disabled),
+.edit-controls button:hover:not(:disabled) {
+    background: var(--button-hover-color);
+}
+
+.key:active:not(:disabled),
+.edit-controls button:active:not(:disabled) {
+    background: var(--button-pressed-color);
+}
+
+/* Green by default ("ready to call"). */
+.call-button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: #2e9d4f;
+    color: #ffffff;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+.call-button:hover:not(:disabled) {
+    background: #258442;
+}
+
+/* JavaScript adds the "in-call" class while a call is active, turning it red. */
+.call-button.in-call {
+    background: #d63a3a;
+}
+
+.call-button.in-call:hover {
+    background: #b82f2f;
+}
+
+.simulated-note {
+    margin: 8px 0 0;
+    color: #1a2b47;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
