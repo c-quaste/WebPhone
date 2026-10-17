@@ -3,19 +3,62 @@
 // this variable is the single source of truth.
 let phoneNumber = "";
 
-// true while a (simulated) call is active, false otherwise.
-let isInCall = false;
+// Where the (simulated) call is right now. Always one of:
+//   "idle"      - no call; ready to dial
+//   "calling"   - dialing, waiting for the other side to answer
+//   "connected" - the call is in progress
+//   "ended"     - the call just ended (shown briefly, then back to "idle")
+let callStatus = "idle";
+
+let isMuted = false;
+let isContactsOpen = false;
+
+// When the current call connected (a timestamp in milliseconds).
+let callStartTime = 0;
+
+// IDs returned by setTimeout/setInterval, kept so they can be cancelled.
+let connectTimeoutId = null;
+let callTimerIntervalId = null;
+let resetStatusTimeoutId = null;
 
 // E.164, the international phone-number standard, allows at most 15 digits.
 const MAX_LENGTH = 15;
+
+// How long the simulated call "rings" before connecting, and how long
+// "Call ended" stays on screen. Both in milliseconds.
+const SIMULATED_CONNECT_DELAY = 2500;
+const CALL_ENDED_DISPLAY_TIME = 2000;
+
+const STATUS_LABELS = {
+    idle: "Ready",
+    calling: "Calling…",
+    connected: "Connected",
+    ended: "Call ended",
+};
+
+// Fictional numbers: 555-0100 to 555-0199 are reserved for fiction.
+// Note: this list only makes dialing easier. It does not restrict which
+// numbers can be called (see Security in CLAUDE.md).
+const CONTACTS = [
+    { name: "Mum", number: "2025550101" },
+    { name: "Dad", number: "2025550102" },
+    { name: "Nana", number: "2025550103" },
+    { name: "Grandad", number: "2025550104" },
+];
 
 // ----- Page elements -----
 // Look each element up once and keep a reference to it.
 const numberDisplay = document.getElementById("number-display");
 const backspaceButton = document.getElementById("backspace-button");
 const clearButton = document.getElementById("clear-button");
+const contactsButton = document.getElementById("contacts-button");
+const contactsPanel = document.getElementById("contacts-panel");
+const contactsList = document.getElementById("contacts-list");
 const keypadButtons = document.querySelectorAll(".key");
 const callButton = document.getElementById("call-button");
+const muteButton = document.getElementById("mute-button");
+const callStatusText = document.getElementById("call-status");
+const callTimer = document.getElementById("call-timer");
 
 // ----- Formatting -----
 // Turn the raw keys pressed (e.g. "5551234567") into international
@@ -57,25 +100,61 @@ function formatNorthAmerican(tenDigits) {
     return `+1 ${areaCode} ${exchange} ${lineNumber}`;
 }
 
+// 65000 milliseconds -> "1:05"
+function formatDuration(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // ----- Display -----
-// Copy the current state onto the page. Every change to phoneNumber
-// is followed by a call to this function.
+// True while dialing or talking, the two states where the number is locked.
+function isInCall() {
+    return callStatus === "calling" || callStatus === "connected";
+}
+
+// Copy the current state onto the page. Every change to the state
+// variables above is followed by a call to this function.
 function updateDisplay() {
+    const inCall = isInCall();
+    const isConnected = callStatus === "connected";
+    const isEmpty = phoneNumber.length === 0;
+
     numberDisplay.textContent = formatForDisplay(phoneNumber);
 
     // The number is locked during a call, so editing is disabled then.
-    const isEmpty = phoneNumber.length === 0;
-    backspaceButton.disabled = isEmpty || isInCall;
-    clearButton.disabled = isEmpty || isInCall;
+    backspaceButton.disabled = isEmpty || inCall;
+    clearButton.disabled = isEmpty || inCall;
+    contactsButton.disabled = inCall;
+
+    // Keys are off while dialing, but work during a connected call
+    // (for menus like "press 1 for...").
     keypadButtons.forEach(function (button) {
-        button.disabled = isInCall;
+        button.disabled = callStatus === "calling";
     });
 
+    contactsPanel.hidden = !isContactsOpen;
+    contactsButton.setAttribute("aria-expanded", String(isContactsOpen));
+
+    // Status line and timer.
+    callStatusText.textContent = STATUS_LABELS[callStatus];
+    callTimer.hidden = !isConnected;
+    if (isConnected) {
+        callTimer.textContent = formatDuration(Date.now() - callStartTime);
+    }
+
+    // Mute is only offered during a connected call.
+    muteButton.hidden = !isConnected;
+    muteButton.classList.toggle("is-muted", isMuted);
+    muteButton.textContent = isMuted ? "Unmute" : "Mute";
+    muteButton.setAttribute("aria-pressed", String(isMuted));
+
     // Red "End call" during a call; green "Call" otherwise.
-    callButton.classList.toggle("in-call", isInCall);
-    callButton.textContent = isInCall ? "End call" : "Call";
+    callButton.classList.toggle("in-call", inCall);
+    callButton.textContent = inCall ? "End call" : "Call";
     // Nothing to dial yet, so Call is disabled (End call never is).
-    callButton.disabled = isEmpty && !isInCall;
+    callButton.disabled = isEmpty && !inCall;
 }
 
 // ----- Sounds -----
@@ -128,43 +207,181 @@ function clearNumber() {
     updateDisplay();
 }
 
+// A keypad key was pressed (on screen or on the keyboard).
+// During a call it only plays its tone; otherwise it also dials the digit.
+function handleKeyPress(digit) {
+    playKeySound(digit);
+    if (!isInCall()) {
+        appendDigit(digit);
+    }
+}
+
+// ----- Contacts -----
+function toggleContacts() {
+    isContactsOpen = !isContactsOpen;
+    if (isContactsOpen) {
+        playSound("contacts.mp3");
+    }
+    updateDisplay();
+}
+
+function selectContact(contact) {
+    phoneNumber = contact.number;
+    isContactsOpen = false;
+    updateDisplay();
+}
+
+// Build one list item per contact. textContent (not innerHTML) keeps any
+// name exactly as text, even if it contains characters like < or >.
+function buildContactsList() {
+    CONTACTS.forEach(function (contact) {
+        const nameText = document.createElement("span");
+        nameText.className = "contact-name";
+        nameText.textContent = contact.name;
+
+        const numberText = document.createElement("span");
+        numberText.className = "contact-number";
+        numberText.textContent = formatForDisplay(contact.number);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "contact";
+        button.append(nameText, numberText);
+        button.addEventListener("click", function () {
+            selectContact(contact);
+        });
+
+        const listItem = document.createElement("li");
+        listItem.append(button);
+        contactsList.append(listItem);
+    });
+}
+
 // ----- Calls (simulated) -----
 // No real call is placed yet. When calling is added, startCall() will
 // also ask the phone service to dial phoneNumber.
 function startCall() {
-    isInCall = true;
+    clearTimeout(resetStatusTimeoutId); // in case "Call ended" is still showing
+    callStatus = "calling";
+    isContactsOpen = false;
     updateDisplay();
     playSound("calling.mp3");
+
+    // Pretend the other side answers after a short delay. Real calling
+    // code will instead call connectCall() when the service says "answered".
+    connectTimeoutId = setTimeout(connectCall, SIMULATED_CONNECT_DELAY);
+}
+
+function connectCall() {
+    callStatus = "connected";
+    callStartTime = Date.now();
+    // Redraw once a second so the timer counts up.
+    callTimerIntervalId = setInterval(updateDisplay, 1000);
+    updateDisplay();
 }
 
 // Ends the call however it ended: the user pressed End call, or (later)
 // the phone service reports that the other side disconnected. Both paths
 // should call this one function so the page always resets the same way.
 function endCall() {
-    isInCall = false;
+    clearTimeout(connectTimeoutId);       // stop a call that hasn't connected yet
+    clearInterval(callTimerIntervalId);   // stop the timer
+    callStatus = "ended";
+    isMuted = false;
     updateDisplay();
     playSound("call-ended.mp3");
+
+    resetStatusTimeoutId = setTimeout(function () {
+        callStatus = "idle";
+        updateDisplay();
+    }, CALL_ENDED_DISPLAY_TIME);
 }
 
 function handleCallButtonClick() {
-    if (isInCall) {
+    if (isInCall()) {
         endCall();
     } else {
         startCall();
     }
 }
 
+// Only changes the button for now. With real calling, this will also
+// turn the microphone's audio track off and on.
+function toggleMute() {
+    isMuted = !isMuted;
+    updateDisplay();
+}
+
+// ----- Keyboard input -----
+// The on-screen key for a digit, e.g. "5" -> the button with data-digit="5".
+function findKeyButton(digit) {
+    return Array.from(keypadButtons).find(function (button) {
+        return button.dataset.digit === digit;
+    });
+}
+
+// Briefly show a key as pressed, so keyboard typing animates the keypad.
+function flashKey(button) {
+    button.classList.add("is-pressed");
+    setTimeout(function () {
+        button.classList.remove("is-pressed");
+    }, 100);
+}
+
+function handleKeyDown(event) {
+    // Ignore held-down repeats and shortcuts like Ctrl+R.
+    if (event.repeat || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+    }
+
+    const keyButton = findKeyButton(event.key);
+    if (keyButton) {
+        event.preventDefault();
+        if (!keyButton.disabled) {
+            handleKeyPress(event.key);
+            flashKey(keyButton);
+        }
+        return;
+    }
+
+    if (event.key === "Backspace") {
+        event.preventDefault();
+        if (!backspaceButton.disabled) {
+            removeLastDigit();
+        }
+    } else if (event.key === "Enter") {
+        // Let Enter work normally on a focused contact.
+        if (contactsPanel.contains(document.activeElement)) {
+            return;
+        }
+        // preventDefault stops Enter from also "clicking" a focused button.
+        event.preventDefault();
+        if (!callButton.disabled) {
+            handleCallButtonClick();
+        }
+    } else if (event.key === "Escape") {
+        if (isInCall()) {
+            endCall();
+        } else if (isContactsOpen) {
+            toggleContacts();
+        }
+    }
+}
+
 // ----- Wiring buttons to actions -----
 keypadButtons.forEach(function (button) {
     button.addEventListener("click", function () {
-        playKeySound(button.dataset.digit);
-        appendDigit(button.dataset.digit);
+        handleKeyPress(button.dataset.digit);
     });
 });
 
 backspaceButton.addEventListener("click", removeLastDigit);
 clearButton.addEventListener("click", clearNumber);
+contactsButton.addEventListener("click", toggleContacts);
 callButton.addEventListener("click", handleCallButtonClick);
+muteButton.addEventListener("click", toggleMute);
+document.addEventListener("keydown", handleKeyDown);
 
-// Show the initial (empty) state when the page loads.
+// Set up the page when it loads.
+buildContactsList();
 updateDisplay();

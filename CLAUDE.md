@@ -38,12 +38,13 @@ There is no build step, package manager, linter, or automated test suite. The ap
 
 - `index.html` — page structure. Loads `style.css` in `<head>` and `script.js` at the end of `<body>`, so the script runs after the page elements exist and can look them up directly.
 - `style.css` — layout and appearance of the phone card, number display, and keypad grid.
-- `script.js` — local keypad behavior: the typed number is held in a `phoneNumber` variable (the source of truth), and `updateDisplay()` copies it to the page after every change. Supports digit entry (max 15 characters), backspace, and clear. A simulated call button toggles an `isInCall` flag via `startCall()` / `endCall()`; any future "remote side disconnected" handler should call `endCall()`. `phoneNumber` always holds the raw keys pressed; `formatForDisplay()` derives the international display text (10 digits → assumes `+1`, e.g. `+1 555 123 4567`). Non-+1 numbers get a `+` but no digit grouping (that would need a library such as libphonenumber).
+- `script.js` — local keypad behavior: the typed number is held in a `phoneNumber` variable (the source of truth), and `updateDisplay()` copies it to the page after every change. Supports digit entry (max 15 characters), backspace, clear, a contacts list (`CONTACTS` array, fictional 555-01xx numbers), mute, a call timer, and keyboard input (digits/`*`/`#`, Backspace, Enter = call, Esc = end call / close contacts). Simulated call flow uses `callStatus` (`idle` → `calling` → `connected` → `ended` → `idle`): `startCall()` → `connectCall()` (after a timer for now; real calling should call it when the far end answers) → `endCall()`, which any future "remote side disconnected" handler should also call. During a connected call keypad keys only play their tone (future DTMF) and don't edit the number. The connection badge (`#connection-status`) is static "not connected" until real calling exists. `phoneNumber` always holds the raw keys pressed; `formatForDisplay()` derives the international display text (10 digits → assumes `+1`, e.g. `+1 555 123 4567`). Non-+1 numbers get a `+` but no digit grouping (that would need a library such as libphonenumber).
 - `README.md` — currently an empty placeholder.
 - `audio/` — MP3 voice prompts, named lowercase-with-hyphens so code can build paths from key values:
   - `key-1.mp3` … `key-9.mp3`, `key-star.mp3`, `key-pound.mp3` — played by `playKeySound()`. There is no `key-0.mp3` yet, so 0 is silent; once it is added, remove the `"0"` early return in `playKeySound()`.
   - `calling.mp3`, `call-ended.mp3` — played by `startCall()` / `endCall()`.
-  - `call-failed.mp3`, `contacts.mp3`, `non-approved-number.mp3` — not used yet; wire each up only when its feature exists.
+  - `contacts.mp3` — played when the contacts panel opens.
+  - `call-failed.mp3`, `non-approved-number.mp3` — not used yet; wire each up only when its feature exists.
   - Only one sound plays at a time: `playSound()` stops the previous one.
   - `non-approved-number.mp3` relates to the future approved-number feature. Any restriction it announces in the browser is cosmetic only (see Security and Calling Restrictions).
 
@@ -67,14 +68,18 @@ Preferred starting technologies:
 - CSS for layout and appearance.
 - JavaScript for interface behavior.
 
-Potential later technologies:
+### Planned Calling Stack
 
-- SIP.js and WebRTC for browser-based calling, subject to provider and browser compatibility.
-- A compatible SIP/VoIP provider or server.
-- Python for selected backend functions if a real need emerges.
-- Asterisk for more advanced call routing and enforcement of calling restrictions, if the project expands in that direction.
+The developer plans to connect this interface to their **Callcentric** phone plan using **Asterisk** and **Python**. Design calling work around this stack:
 
-Treat this list as a possible direction, not a requirement to use every technology. Do not introduce a framework, backend, database, or additional dependency without explaining why it is needed and getting approval before a major architectural change.
+- **Callcentric:** the SIP/VoIP provider that carries real calls to and from the phone network.
+- **Asterisk:** the phone server between the browser interface and Callcentric. It handles call routing, and it is where approved-number and approved-caller restrictions should be enforced (see Security and Calling Restrictions).
+- **Python:** backend functions alongside Asterisk. Its exact role is still to be decided.
+- **SIP.js and WebRTC:** likely options for carrying browser audio to Asterisk, subject to browser and Asterisk compatibility.
+
+Still open, to decide in Phase 5: how the browser talks to Asterisk (for example, SIP over WebSocket directly, or through a Python service) and exactly what Python is responsible for. Callcentric account credentials belong in Asterisk or server-side configuration kept out of Git, never in browser JavaScript.
+
+Even within this stack, do not introduce a framework, backend, database, or additional dependency without explaining why it is needed and getting approval before a major architectural change.
 
 ## Architecture Principles
 
@@ -138,7 +143,7 @@ Treat this list as a possible direction, not a requirement to use every technolo
 2. **Static interface:** Build the phone layout and style it for desktop use.
 3. **Local interactions:** Implement keypad entry, backspace/clear, contact selection, and interface status locally.
 4. **Testing and cleanup:** Test the interface, fix issues, and document how to run it.
-5. **Calling research and design:** Confirm browser, SIP provider, SIP.js, and WebRTC requirements before implementation.
+5. **Calling research and design:** Confirm the requirements for Callcentric, Asterisk, Python, the browser, SIP.js, and WebRTC before implementation. This includes how the browser connects to Asterisk.
 6. **Calling prototype:** Add SIP registration and call controls only after the requirements and connection setup are understood.
 7. **Future features:** Consider call history, configurable number filtering, and a backend only when the core calling prototype is stable.
 8. **Long-term system evaluation:** If pursuing a physical phone with approved-number restrictions, design and test those controls at the telephony-system level.
@@ -147,9 +152,9 @@ Do not attempt all phases at once. Complete and verify each phase before moving 
 
 ## Current Status
 
-- Phase 1 (project foundation) is mostly done: the Git repository exists, and `index.html` has a basic page skeleton linking empty `style.css` and `script.js` files. `README.md` is still empty.
-- Phases 2–3 started: a numeric keypad (0–9, `*`, `#`) appends to a number display, with working backspace and clear buttons. A simulated call button (green "Call" / red "End call") exists; it places no real call, and disconnect handling waits for real calling. Contacts and a status area are not built yet.
-- Keypad and call-button voice prompts play from `audio/`. Theme: page background `images/BlueyBackground.png`, phone `#4BA9DF`, buttons `#E98B32` with `#34558B` text (CSS variables in `:root`). `audio/` and `images/` are not yet committed.
+- Phase 1 (project foundation) is done, except that `README.md` is still empty.
+- Phases 2–3 started: a numeric keypad (0–9, `*`, `#`) appends to a number display, with working backspace and clear buttons. Simulated calling UI is in place: a call status line and timer, a green "Call" / red "End call" button, mute, in-call keypad tones, contacts, keyboard input, and a connection badge. None of it places real calls or touches the microphone. Not built: an incoming-call screen, a call-failed state, and call history.
+- Keypad and call-button voice prompts play from `audio/`. Theme: page background `images/BlueyBackground.png`, phone `#4BA9DF`, buttons `#E98B32` with `#34558B` text (CSS variables in `:root`). Physical plastic look: `.phone` is the housing, `.faceplate` (a purely visual wrapper) is the recessed panel, and all buttons share one raised-key rule in `style.css`. Each button type sets only `--face` / `--face-light` / `--edge` colors, and `--key-depth` controls key height and press travel. The number display uses the Fredoka font, loaded from Google Fonts via `<link>` tags in `index.html` (approved external resource; no package or build step). It falls back to Comic Sans MS when offline. `audio/` and `images/` are not yet committed.
 - The first target is a frontend-only browser softphone prototype.
 - Real calling, provider integration, backend functionality, and physical-phone integration have not yet been implemented or verified. (The first commit message mentions WebRTC calling, but no calling code exists.)
 

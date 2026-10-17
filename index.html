@@ -4,36 +4,67 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phone</title>
+    <!-- Fredoka: a rounded, cartoon-style font from Google Fonts, used by the number display. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <main class="phone">
-        <!-- The number the user has typed so far. JavaScript fills this in. -->
-        <div id="number-display" class="number-display" aria-live="polite"></div>
+        <!-- Whether the phone is connected to a real phone service.
+             Always "not connected" for now; future calling code will update it. -->
+        <p id="connection-status" class="connection-status">Phone service: not connected (simulation mode)</p>
 
-        <div class="edit-controls">
-            <button type="button" id="backspace-button">⌫ Backspace</button>
-            <button type="button" id="clear-button">Clear</button>
+        <!-- The recessed panel set into the phone's plastic housing.
+             Purely visual: the script doesn't use this element. -->
+        <div class="faceplate">
+            <!-- Call status on the left, call duration on the right. -->
+            <div class="status-row">
+                <span id="call-status" aria-live="polite">Ready</span>
+                <span id="call-timer" hidden>0:00</span>
+            </div>
+
+            <!-- The number the user has typed so far. JavaScript fills this in. -->
+            <div id="number-display" class="number-display" aria-live="polite"></div>
+
+            <div class="edit-controls">
+                <button type="button" id="backspace-button" aria-label="Backspace">⌫</button>
+                <button type="button" id="clear-button">Clear</button>
+                <button type="button" id="contacts-button" aria-expanded="false" aria-controls="contacts-panel">Contacts</button>
+            </div>
+
+            <!-- The contacts panel sits on top of the keypad while it's open. -->
+            <div class="keypad-area">
+                <!-- Each key stores its value in a data-digit attribute so the
+                     script can read it without depending on the button's label. -->
+                <div class="keypad">
+                    <button type="button" class="key" data-digit="1">1</button>
+                    <button type="button" class="key" data-digit="2">2</button>
+                    <button type="button" class="key" data-digit="3">3</button>
+                    <button type="button" class="key" data-digit="4">4</button>
+                    <button type="button" class="key" data-digit="5">5</button>
+                    <button type="button" class="key" data-digit="6">6</button>
+                    <button type="button" class="key" data-digit="7">7</button>
+                    <button type="button" class="key" data-digit="8">8</button>
+                    <button type="button" class="key" data-digit="9">9</button>
+                    <button type="button" class="key" data-digit="*">*</button>
+                    <button type="button" class="key" data-digit="0">0</button>
+                    <button type="button" class="key" data-digit="#">#</button>
+                </div>
+
+                <!-- Filled in by script.js from the CONTACTS list. -->
+                <div id="contacts-panel" class="contacts-panel" hidden>
+                    <ul id="contacts-list" class="contacts-list"></ul>
+                </div>
+            </div>
         </div>
 
-        <!-- Each key stores its value in a data-digit attribute so the
-             script can read it without depending on the button's label. -->
-        <div class="keypad">
-            <button type="button" class="key" data-digit="1">1</button>
-            <button type="button" class="key" data-digit="2">2</button>
-            <button type="button" class="key" data-digit="3">3</button>
-            <button type="button" class="key" data-digit="4">4</button>
-            <button type="button" class="key" data-digit="5">5</button>
-            <button type="button" class="key" data-digit="6">6</button>
-            <button type="button" class="key" data-digit="7">7</button>
-            <button type="button" class="key" data-digit="8">8</button>
-            <button type="button" class="key" data-digit="9">9</button>
-            <button type="button" class="key" data-digit="*">*</button>
-            <button type="button" class="key" data-digit="0">0</button>
-            <button type="button" class="key" data-digit="#">#</button>
+        <div class="call-controls">
+            <!-- Only shown during a connected call. -->
+            <button type="button" id="mute-button" class="mute-button" aria-pressed="false" hidden>Mute</button>
+            <button type="button" id="call-button" class="call-button">Call</button>
         </div>
-
-        <button type="button" id="call-button" class="call-button">Call</button>
         <p class="simulated-note">Simulated — no real call is placed.</p>
     </main>
 
